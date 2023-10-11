@@ -19,16 +19,16 @@ type CodeData struct {
 	Length   uint16
 }
 
-func NewLiteral(value uint8) *CodeData {
-	return &CodeData{Literal, value, 0, 0}
+func NewLiteral(value uint8) CodeData {
+	return CodeData{Literal, value, 0, 0}
 }
 
-func NewEndOfBlock() *CodeData {
-	return &CodeData{EndOfBlock, 0, 0, 0}
+func NewEndOfBlock() CodeData {
+	return CodeData{EndOfBlock, 0, 0, 0}
 }
 
-func NewDictionary(length uint16, distance uint16) *CodeData {
-	return &CodeData{Dictionary, 0, distance, length}
+func NewDictionary(length uint16, distance uint16) CodeData {
+	return CodeData{Dictionary, 0, distance, length}
 }
 
 type Result uint32
@@ -89,14 +89,14 @@ func NewCodeIterator(reader BitRead, llDecoder *HuffmanDecoder, distDecoder *Huf
 	return &CodeIterator{reader, llDecoder, distDecoder}
 }
 
-func (c *CodeIterator) Next() (*CodeData, error) {
+func (c *CodeIterator) Next() (CodeData, error) {
 	bitcode, err := c.reader.PeekBits()
 	if err != nil {
-		return nil, err
+		return CodeData{}, err
 	}
 	pair, err := c.llDecoder.Decode(bitcode)
 	if err != nil {
-		return nil, err
+		return CodeData{}, err
 	}
 	c.reader.Consume(int(pair.Length))
 	if pair.Symbol == END_OF_BLOCK {
@@ -107,22 +107,22 @@ func (c *CodeIterator) Next() (*CodeData, error) {
 	bitsLength := SYMBOL2BITS_LENGTH[int(pair.Symbol&0xFF)]
 	length, err := c.reader.ReadBits(int(bitsLength[0]))
 	if err != nil {
-		return nil, err
+		return CodeData{}, err
 	}
 	bitsLength[1] += length
 	bitcode, err = c.reader.PeekBits()
 	if err != nil {
-		return nil, err
+		return CodeData{}, err
 	}
 	pair, err = c.distDecoder.Decode(bitcode)
 	if err != nil {
-		return nil, err
+		return CodeData{}, err
 	}
 	c.reader.Consume(int(pair.Length))
 	bitsDistance := SYMBOL2BITS_DISTANCE[int(pair.Symbol)]
 	dist, err := c.reader.ReadBits(int(bitsDistance[0]))
 	if err != nil {
-		return nil, err
+		return CodeData{}, err
 	}
 	bitsDistance[1] += dist
 	return NewDictionary(uint16(bitsLength[1]), uint16(bitsDistance[1])), nil

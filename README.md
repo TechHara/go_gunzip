@@ -6,14 +6,14 @@ Below shows runtime comparison with the go standard library implementation (comp
 ## Decompression of linux.tar.gz (Linux x64)
 |  # Gorutines | compress/gzip  | This  |
 |:-:|:-:|:-:|
-| 1 | 3.71 | 5.18 |
-| 2 | | 12.26 |
+| 1 | 3.71 | 3.99 |
+| 2 | | 6.51 |
 
 ## Decompression of linux.tar.gz (macOS arm64)
 |  # Gorutines | compress/gzip  | This  |
 |:-:|:-:|:-:|
-| 1 | 4.12 | 5.38 |
-| 2 | | 4.93 |
+| 1 | 4.12 | 4.52 |
+| 2 | | 4.12 |
 
 
 # Build
