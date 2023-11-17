@@ -43,13 +43,13 @@ type DecodeResult struct {
 	N   uint32
 }
 
-func Decode(window []uint8, boundary int, iter *CodeIterator) (*DecodeResult, error) {
+func Decode(window []uint8, boundary int, reader BitRead, llDecoder *HuffmanDecoder, distDecoder *HuffmanDecoder) (*DecodeResult, error) {
 	idx := boundary
 	if idx+MAX_LENGTH >= len(window) {
 		return &DecodeResult{WindowsIsFull, uint32(idx - boundary)}, nil
 	}
 	for {
-		code, err := iter.Next()
+		code, err := ReadNextCode(reader, llDecoder, distDecoder)
 		if err != nil {
 			return nil, err
 		}
@@ -79,48 +79,38 @@ func Decode(window []uint8, boundary int, iter *CodeIterator) (*DecodeResult, er
 	}
 }
 
-type CodeIterator struct {
-	reader      BitRead
-	llDecoder   *HuffmanDecoder
-	distDecoder *HuffmanDecoder
-}
-
-func NewCodeIterator(reader BitRead, llDecoder *HuffmanDecoder, distDecoder *HuffmanDecoder) *CodeIterator {
-	return &CodeIterator{reader, llDecoder, distDecoder}
-}
-
-func (c *CodeIterator) Next() (CodeData, error) {
-	bitcode, err := c.reader.PeekBits()
+func ReadNextCode(reader BitRead, llDecoder *HuffmanDecoder, distDecoder *HuffmanDecoder) (CodeData, error) {
+	bitcode, err := reader.PeekBits()
 	if err != nil {
 		return CodeData{}, err
 	}
-	pair, err := c.llDecoder.Decode(bitcode)
+	pair, err := llDecoder.Decode(bitcode)
 	if err != nil {
 		return CodeData{}, err
 	}
-	c.reader.Consume(int(pair.Length))
+	reader.Consume(int(pair.Length))
 	if pair.Symbol == END_OF_BLOCK {
 		return NewEndOfBlock(), nil
 	} else if pair.Symbol < END_OF_BLOCK {
 		return NewLiteral(uint8(pair.Symbol)), nil
 	}
 	bitsLength := SYMBOL2BITS_LENGTH[int(pair.Symbol&0xFF)]
-	length, err := c.reader.ReadBits(int(bitsLength[0]))
+	length, err := reader.ReadBits(int(bitsLength[0]))
 	if err != nil {
 		return CodeData{}, err
 	}
 	bitsLength[1] += length
-	bitcode, err = c.reader.PeekBits()
+	bitcode, err = reader.PeekBits()
 	if err != nil {
 		return CodeData{}, err
 	}
-	pair, err = c.distDecoder.Decode(bitcode)
+	pair, err = distDecoder.Decode(bitcode)
 	if err != nil {
 		return CodeData{}, err
 	}
-	c.reader.Consume(int(pair.Length))
+	reader.Consume(int(pair.Length))
 	bitsDistance := SYMBOL2BITS_DISTANCE[int(pair.Symbol)]
-	dist, err := c.reader.ReadBits(int(bitsDistance[0]))
+	dist, err := reader.ReadBits(int(bitsDistance[0]))
 	if err != nil {
 		return CodeData{}, err
 	}

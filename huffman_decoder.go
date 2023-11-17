@@ -17,6 +17,10 @@ type HuffmanDecoder struct {
 	secondaryMask uint32
 }
 
+func EmptyHuffmanDecoder() *HuffmanDecoder {
+	return &HuffmanDecoder{}
+}
+
 func NewHuffmanDecoder(codebook *Codebook) *HuffmanDecoder {
 	var nbits uint32
 	var secondaryMask uint32

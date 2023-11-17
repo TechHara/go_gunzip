@@ -5,6 +5,8 @@ type State int
 const (
 	StateHeader State = iota
 	StateBlock
+	StateInflate
+	StateInflateFinalBlock
 	StateFooter
 )
 
@@ -24,14 +26,16 @@ type Produce struct {
 }
 
 type Producer struct {
-	reader    BitRead
-	state     State
-	memberIdx int
-	window    SlidingWindow
+	reader      BitRead
+	state       State
+	memberIdx   int
+	window      SlidingWindow
+	llDecoder   *HuffmanDecoder
+	distDecoder *HuffmanDecoder
 }
 
 func NewProducer(reader BitRead) *Producer {
-	return &Producer{reader, StateHeader, 0, *NewSlidingWindow()}
+	return &Producer{reader, StateHeader, 0, *NewSlidingWindow(), EmptyHuffmanDecoder(), EmptyHuffmanDecoder()}
 }
 
 // returns nil as producer if done
@@ -57,19 +61,35 @@ func (p *Producer) Next() (*Produce, error) {
 		if err != nil {
 			return nil, err
 		}
-		if header&1 == 1 {
-			p.state = StateFooter
-		}
+		is_final := (header & 1) == 1
 
 		if header&0b110 == 0b000 {
+			if is_final {
+				p.state = StateFooter
+			}
 			return p.inflateBlock0()
 		} else if header&0b110 == 0b010 {
-			return p.inflateBlock1()
+			p.llDecoder = NewHuffmanDecoder(NewDefaultLLCodebook())
+			p.distDecoder = NewHuffmanDecoder(NewDefaultDistCodebook())
+			return p.inflate(is_final)
 		} else if header&0b110 == 0b100 {
-			return p.inflateBlock2()
+			p.llDecoder, p.distDecoder, err = p.readDynamicCodebooks()
+			if err != nil {
+				return nil, err
+			}
+			if is_final {
+				p.state = StateInflateFinalBlock
+			} else {
+				p.state = StateInflate
+			}
+			return p.inflate(is_final)
 		} else {
 			return nil, NewError(InvalidBlockType)
 		}
+	} else if p.state == StateInflate {
+		return p.inflate(false)
+	} else if p.state == StateInflateFinalBlock {
+		return p.inflate(true)
 	} else if p.state == StateFooter {
 		p.state = StateHeader
 		footer, err := ReadFooter(p.reader)
@@ -101,42 +121,24 @@ func (p *Producer) inflateBlock0() (*Produce, error) {
 	return &Produce{ProduceData, nil, nil, buf}, nil
 }
 
-func (p *Producer) inflateBlock1() (*Produce, error) {
-	llDecoder := NewHuffmanDecoder(NewDefaultLLCodebook())
-	distDecoder := NewHuffmanDecoder(NewDefaultDistCodebook())
-	return p.inflate(llDecoder, distDecoder)
-}
-
-func (p *Producer) inflateBlock2() (*Produce, error) {
-	llDecoder, distDecoder, err := p.readDynamicCodebooks()
+func (p *Producer) inflate(is_final bool) (*Produce, error) {
+	boundary := p.window.Boundary
+	result, err := Decode(p.window.Data, boundary, p.reader, p.llDecoder, p.distDecoder)
 	if err != nil {
 		return nil, err
 	}
-	return p.inflate(llDecoder, distDecoder)
-}
-
-func (p *Producer) inflate(llDecoder *HuffmanDecoder, distDecoder *HuffmanDecoder) (*Produce, error) {
-	iter := NewCodeIterator(p.reader, llDecoder, distDecoder)
-	done := false
-	buf := make([]uint8, 0)
-	for {
-		boundary := p.window.Boundary
-		decodeResult, err := Decode(p.window.Data, boundary, iter)
-		if err != nil {
-			return nil, err
-		}
-		if decodeResult.Tag == Done {
-			done = true
-		}
-
-		n := int(decodeResult.N)
-		buf = append(buf, p.window.WriteBuffer()[:n]...)
-
-		p.window.Slide(n)
-		if done {
-			break
+	n := int(result.N)
+	if result.Tag == Done {
+		if is_final {
+			p.state = StateFooter
+		} else {
+			p.state = StateBlock
 		}
 	}
+
+	buf := make([]uint8, n)
+	copy(buf, p.window.WriteBuffer()[:n])
+	p.window.Slide(n)
 	return &Produce{ProduceData, nil, nil, buf}, nil
 }
 

@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-const bufferSize = 4 << 10
+const bufferSize = 16 << 10
 
 type BitRead interface {
 	PeekBits() (uint32, error)
