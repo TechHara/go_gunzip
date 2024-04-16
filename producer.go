@@ -92,6 +92,7 @@ func (p *Producer) Next() (*Produce, error) {
 		return p.inflate(true)
 	} else if p.state == StateFooter {
 		p.state = StateHeader
+		p.window = *NewSlidingWindow() // reset history
 		footer, err := ReadFooter(p.reader)
 		return &Produce{ProduceFooter, nil, footer, nil}, err
 	}
