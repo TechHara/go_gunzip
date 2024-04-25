@@ -117,8 +117,9 @@ func (p *Producer) inflateBlock0() (*Produce, error) {
 	if err != nil {
 		return nil, err
 	}
-	copy(p.window.WriteBuffer()[:length], buf)
-	p.window.Slide((int(length)))
+	n := min(length, MAX_DISTANCE)
+	copy(p.window.WriteBuffer()[:n], buf[length-n:length])
+	p.window.Slide((int(n)))
 	return &Produce{ProduceData, nil, nil, buf}, nil
 }
 
